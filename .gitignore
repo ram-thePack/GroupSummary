@@ -1,0 +1,7 @@
+.env
+.venv
+*.log
+lambda_function.zip
+thepack_*.md
+node_modules/
+logs/

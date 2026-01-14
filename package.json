@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "whatsapp-web.js": "github:BenyFilho/whatsapp-web.js#fix-getContact"
+  }
+}

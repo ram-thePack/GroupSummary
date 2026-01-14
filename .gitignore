@@ -5,3 +5,7 @@ lambda_function.zip
 thepack_*.md
 node_modules/
 logs/
+venv/
+.venv/
+__pycache__/
+*.pyc

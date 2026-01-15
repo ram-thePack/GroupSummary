@@ -1,0 +1,104 @@
+name: Weekly WhatsApp Summary
+
+on:
+  schedule:
+    # Every Monday at 9:00 AM IST (3:30 AM UTC)
+    - cron: "30 3 * * 1"
+
+  # Allow manual runs for testing
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Start date (YYYY-MM-DD) - leave empty to run now and schedule next Monday"
+        required: false
+        type: string
+      run_mode:
+        description: "Run mode"
+        required: false
+        type: choice
+        default: "run_now"
+        options:
+          - run_now
+          - specific_date
+
+jobs:
+  generate-summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install mysql-connector-python openai python-dotenv requests
+
+      - name: Calculate target date
+        id: date
+        run: |
+          # Check if this is a manual run with specific date
+          if [ "${{ github.event.inputs.run_mode }}" = "specific_date" ] && [ -n "${{ github.event.inputs.date }}" ]; then
+            # Use the provided date
+            TARGET_DATE="${{ github.event.inputs.date }}"
+            echo "📅 Using provided date: $TARGET_DATE"
+          elif [ "${{ github.event.inputs.run_mode }}" = "run_now" ] || [ -z "${{ github.event_name }}" ]; then
+            # Manual run without date OR first time run - use last Monday
+            LAST_MONDAY=$(date -d "last monday" +%Y-%m-%d)
+            TARGET_DATE="$LAST_MONDAY"
+            echo "🚀 Run now mode: Processing last week ($TARGET_DATE)"
+          else
+            # Scheduled cron run - use last Monday
+            LAST_MONDAY=$(date -d "last monday" +%Y-%m-%d)
+            TARGET_DATE="$LAST_MONDAY"
+            echo "⏰ Scheduled run: Processing last week ($TARGET_DATE)"
+          fi
+
+          echo "target_date=$TARGET_DATE" >> $GITHUB_OUTPUT
+          echo "Final target date: $TARGET_DATE"
+
+      - name: Verify articles file exists
+        run: |
+          if [ ! -f "thepack_articles.json" ]; then
+            echo "❌ Error: thepack_articles.json not found"
+            exit 1
+          fi
+          echo "✅ Found articles file"
+
+      - name: Generate weekly summary
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BUBBLE_ENDPOINT_URL: ${{ secrets.BUBBLE_ENDPOINT_URL }}
+          BUBBLE_API_KEY: ${{ secrets.BUBBLE_API_KEY }}
+          THEPACK_ARTICLES_FILE: thepack_articles.json
+        run: |
+          echo "Processing week starting: ${{ steps.date.outputs.target_date }}"
+          python app.py ${{ steps.date.outputs.target_date }}
+
+      - name: Upload generated files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-summary-${{ steps.date.outputs.target_date }}
+          path: |
+            thepack_summary_*.md
+            whatsapp_summary_*.log
+          retention-days: 90
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ Summary generated successfully for ${{ steps.date.outputs.target_date }}"
+          echo "📊 Check Bubble.io for the published summary"
+          echo ""
+          echo "📅 Next automatic run: Next Monday at 9:00 AM IST"
